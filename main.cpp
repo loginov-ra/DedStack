@@ -1,4 +1,6 @@
 
+#define DEBUG
+
 #include "Stack.h"
 #include <string>
 
