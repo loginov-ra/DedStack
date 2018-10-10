@@ -30,21 +30,22 @@ template <typename Type>
 class Stack
 {
 private:
-    const size_t INITIAL_CAPACITY = 1;
-    
+    const static size_t INITIAL_CAPACITY = 1;
+
     #ifdef DEBUG
-        const int    CANARY_CORRECT   = 0xBEDABEDA;
-        const size_t HASH_MUL         = 29;
-        const size_t HASH_MOD         = 1000000007;
+        const static int    CANARY_CORRECT   = 0xBEDABEDA;
+        const static size_t HASH_MUL         = 29;
+        const static size_t HASH_MOD         = 1000000007;
     #endif
 
     char* bytes_;
-    size_t size_;  
     size_t capacity_;
+    size_t size_;  
 
     #ifdef DEBUG
         std::hash<Type> hasher_;
         size_t hash_sum_;
+        size_t size_cpy_;
     #endif
 
     Type* getElementPointer(size_t i) const
@@ -75,7 +76,9 @@ private:
     void destroyElements()
     {
         for (size_t i = 0; i < size_; ++i)
+        {
             getElementPointer(i)->~Type();
+        }
     }
 
     void tryToExpand()
@@ -121,6 +124,16 @@ private:
     #endif
     
 public:
+    size_t size() const
+    {
+       return size_; 
+    }
+
+    size_t capacity() const
+    {
+        return size_;
+    }
+
     bool ok() const
     {
         return this &&
@@ -130,7 +143,8 @@ public:
                    &&
                    getCanaryLeft()  == this &&
                    getCanaryRight() == 0xBEDABEDA &&
-                   hash_sum_ == calculateHashSum()
+                   hash_sum_ == calculateHashSum() &&
+                   size_cpy_ == size_
                #endif
                ;
     }
@@ -139,7 +153,25 @@ public:
     {
         printf("D_U_M_P for Stack [this = %p][%s]\n", this, ok() ? "OK" : "FAIL");
         printf("Dump was called. Reason: %s\n", reason);
-        printf("Size: %lu, Capacity: %lu\n", size_, capacity_);
+        printf(" Size: %lu, Capacity: %lu\n", size_, capacity_);
+        printf("*Size: %lu\n", size_cpy_);
+        printf("Bytes: %p\n", bytes_);
+
+        if (size_ > capacity_)
+        {
+            printf("Size is more then capacity!\n Strange data!\n");
+            return;
+        }
+
+        #ifdef DEBUG
+            if (size_ != size_cpy_)
+            {
+                printf("Size is violated!\n");
+                return;
+            } 
+ 
+            printf("Checksum: %lu (%s)\n", hash_sum_, (hash_sum_ == calculateHashSum()) ? "OK" : "FAIL");
+        #endif
 
         printf("Here are elements which stack contains:\n");
         
@@ -156,19 +188,18 @@ public:
         #ifdef DEBUG
             printf("[%p]  %X (CANARY %s)\n", bytes_ + L_CANARY_SIZE + capacity_ * sizeof(Type), getCanaryRight(),
                                              getCanaryRight() == 0xBEDABEDA ? "OK" : "FAIL");
-
-            printf("Checksum: %lu (%s)\n", hash_sum_, (hash_sum_ == calculateHashSum()) ? "OK" : "FAIL");
         #endif
     }
 
     Stack():
         bytes_(new char[INITIAL_CAPACITY * sizeof(Type) + CANARIES_SIZE]),
-        size_(0),
-        capacity_(INITIAL_CAPACITY)
+        capacity_(INITIAL_CAPACITY),
+        size_(0)
         #ifdef DEBUG
             ,
             hasher_(),
-            hash_sum_(0)
+            hash_sum_(0),
+            size_cpy_(0)
         #endif
     {
         makeCanaries();
@@ -176,12 +207,13 @@ public:
 
     Stack(size_t size, const Type& elem):
         bytes_(new char[size * sizeof(Type) + CANARIES_SIZE]),
-        size_(size),
-        capacity_(size)
+        capacity_(size),
+        size_(size)
         #ifdef DEBUG
             ,
             hasher_(),
-            hash_sum_(0)
+            hash_sum_(0),
+            size_cpy_(size)
         #endif
     {
         for (size_t i = 0; i < size; ++i)
@@ -198,12 +230,13 @@ public:
 
     Stack(const Stack& that):
         bytes_(new char[that.capacity_ * sizeof(Type) + sizeof(int) + sizeof(Stack*)]),
-        size_(that.size_),
-        capacity_(that.capacity_)
+        capacity_(that.capacity_),
+        size_(that.size_)
         #ifdef DEBUG
             ,
             hasher_(),
-            hash_sum_(that.hash_sum_)
+            hash_sum_(that.hash_sum_),
+            size_cpy_(that.size_)
         #endif
 
     {
@@ -224,6 +257,7 @@ public:
         #ifdef DEBUG
             hasher_ = that.hasher_;
             hash_sum_ = that.hash_sum_;
+            size_cpy_ = that.size_;
         #endif
         size_ = that.size_;
         capacity_ = that.capacity_;
@@ -233,12 +267,13 @@ public:
 
     Stack(Stack&& that):
         bytes_(that.bytes_),
-        size_(that.size_),
-        capacity_(that.capacity)
+        capacity_(that.capacity),
+        size_(that.size_)
         #ifdef DEBUG
-        ,
-        hasher_(that.haser_),
-        hash_sum_(that.hash_sum_)
+            ,
+            hasher_(that.haser_),
+            hash_sum_(that.hash_sum_),
+            size_cpy_(that.size_)
         #endif
     {
         ASSERT(that.ok(), "Moved stack is not ok");
@@ -253,6 +288,7 @@ public:
         #ifdef DEBUG
             hasher_ = that.hasher_;
             hash_sum_ = that.hash_sum_;
+            size_cpy_ = that.size_;
         #endif
         size_ = that.size_;
         capacity_ = that.capacity_;
@@ -266,6 +302,8 @@ public:
         FUNCTION_GUARD(Stack<Type>);
         tryToExpand();
         ++size_;
+        ++size_cpy_;
+        *getElementPointer(size_ - 1) = Type();
         *getElementPointer(size_ - 1) = elem;
         #ifdef DEBUG
             hash_sum_ = calculateHashSum();
@@ -278,15 +316,23 @@ public:
         ASSERT(size_ > 0, "Called pop() of an empty stack");
         getElementPointer(size_ - 1)->~Type();
         --size_;
+        --size_cpy_;
         #ifdef DEBUG
             hash_sum_ = calculateHashSum(); 
         #endif
+    }
+    
+    const Type& operator [](size_t i) const
+    {
+        FUNCTION_GUARD(Stack<Type>);
+        ASSERT(i < size_, "Out of range while getting element");
+        return *getElementPointer(i);
     }
 
     const Type& top() const
     {
         FUNCTION_GUARD(Stack<Type>);
-        return *getElementPointer(size_ - 1);
+        return (*this)[size_ - 1];
     }
 
     ~Stack()
