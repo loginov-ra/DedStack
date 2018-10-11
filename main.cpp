@@ -40,8 +40,10 @@ void testReallocBySharedPtr(int* raw)
     std::shared_ptr<int> ptr(raw);
     Stack<std::shared_ptr<int>> ptrs;
     for (size_t i = 0; i < 100; ++i)
+    {
         ptrs.push(std::shared_ptr<int>(ptr));
-    
+    }
+
     ASSERT(ptrs.top().use_count() == 101, "Wrong copying");
 }
 
@@ -77,6 +79,5 @@ void testEraseStructMemRight()
 int main()
 {
     //int* var = new int[5];
-    testEraseStructMemRight();
     return 0;
 }

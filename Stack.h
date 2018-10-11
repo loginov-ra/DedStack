@@ -30,7 +30,7 @@ template <typename Type>
 class Stack
 {
 private:
-    const static size_t INITIAL_CAPACITY = 1;
+    const static size_t INITIAL_CAPACITY = 4;
 
     #ifdef DEBUG
         const static int    CANARY_CORRECT   = 0xBEDABEDA;
@@ -91,6 +91,7 @@ private:
             #ifdef DEBUG
                 memset(bytes_ + L_CANARY_SIZE + size_ * sizeof(Type), 0, sizeof(int));
             #endif
+            memset(bytes_ + L_CANARY_SIZE + size_ * sizeof(Type), 0, size_ * sizeof(Type));
             capacity_ *= 2;
             makeCanaries();
         }
@@ -154,7 +155,9 @@ public:
         printf("D_U_M_P for Stack [this = %p][%s]\n", this, ok() ? "OK" : "FAIL");
         printf("Dump was called. Reason: %s\n", reason);
         printf(" Size: %lu, Capacity: %lu\n", size_, capacity_);
-        printf("*Size: %lu\n", size_cpy_);
+        #ifdef DEBUG
+            printf("*Size: %lu\n", size_cpy_);
+        #endif
         printf("Bytes: %p\n", bytes_);
 
         if (size_ > capacity_)
@@ -229,7 +232,7 @@ public:
     }
 
     Stack(const Stack& that):
-        bytes_(new char[that.capacity_ * sizeof(Type) + sizeof(int) + sizeof(Stack*)]),
+        bytes_(new char[that.capacity_ * sizeof(Type) + CANARIES_SIZE]),
         capacity_(that.capacity_),
         size_(that.size_)
         #ifdef DEBUG
@@ -240,7 +243,12 @@ public:
         #endif
 
     {
-        ASSERT(that.ok(), "Copied stack is not ok");
+        if (!that.ok())
+        {
+            that.dump();
+            ASSERT(that.ok(), "Copied stack is not ok");
+        }
+
         #ifdef DEBUG
             *reinterpret_cast<Stack<Type>**>(bytes_) = this;
         #endif
@@ -250,7 +258,12 @@ public:
 
     const Stack& operator =(const Stack& that)
     {
-        ASSERT(that.ok(), "Copied stack is not ok");
+        if (!that.ok())
+        {
+            that.dump();
+            ASSERT(that.ok(), "Copied stack is not ok");
+        }
+
         destroyElements();
         delete[] bytes_;
         bytes_ = new char[that.capacity_ * sizeof(Type) + CANARIES_SIZE];
@@ -267,23 +280,33 @@ public:
 
     Stack(Stack&& that):
         bytes_(that.bytes_),
-        capacity_(that.capacity),
+        capacity_(that.capacity_),
         size_(that.size_)
         #ifdef DEBUG
             ,
-            hasher_(that.haser_),
+            hasher_(that.hasher_),
             hash_sum_(that.hash_sum_),
             size_cpy_(that.size_)
         #endif
     {
-        ASSERT(that.ok(), "Moved stack is not ok");
+        if (!that.ok())
+        {
+            that.dump();
+            ASSERT(that.ok(), "Copied stack is not ok");
+        }
+
         makeCanaries();
         that.bytes_ = nullptr;
     }
 
     Stack&& operator =(Stack&& that)
     {
-        ASSERT(that.ok(), "Moved stack is not ok");
+        if (!that.ok())
+        {
+            that.dump();
+            ASSERT(that.ok(), "Copied stack is not ok");
+        }
+
         bytes_ = that.bytes_;
         #ifdef DEBUG
             hasher_ = that.hasher_;
@@ -302,10 +325,10 @@ public:
         FUNCTION_GUARD(Stack<Type>);
         tryToExpand();
         ++size_;
-        ++size_cpy_;
         *getElementPointer(size_ - 1) = Type();
         *getElementPointer(size_ - 1) = elem;
         #ifdef DEBUG
+            ++size_cpy_;
             hash_sum_ = calculateHashSum();
         #endif
     }
@@ -316,8 +339,8 @@ public:
         ASSERT(size_ > 0, "Called pop() of an empty stack");
         getElementPointer(size_ - 1)->~Type();
         --size_;
-        --size_cpy_;
         #ifdef DEBUG
+            --size_cpy_;
             hash_sum_ = calculateHashSum(); 
         #endif
     }
